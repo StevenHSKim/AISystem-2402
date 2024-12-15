@@ -214,7 +214,14 @@ Ensure your submissions are finalized by **23:59 KST** to be included in the nex
 | Rank | Name             | Overall Score | Submission Count | Submission Date     |
 |------|------------------|---------------|------------------|---------------------|
 | 1    | zxcv3296    | 60.32%        | 1                | 2024-12-06 12:09 |
-| 2    | Baseline Model   | 50.65%        | 1                | - |
+| 2    | **Baseline Model 2**  | **55.15%**    | 1                | 2024-12-13 17:10  |
+| 3    | nshuhsn  | 55.07%     | 1                | 2024-12-13 13:06  |
+| 4    | sumin819 | 52.25%      | 1                | 2024-12-14 13:37  |
+| 5    | burugi  | 52.18%      | 1                | 2024-12-12 20:07  |
+| 6    | **Baseline Model 1**  | **50.65%**      | 1                | - |
+| 7   | koallako   | 50.25%        | 1                | 2024-12-13 23:54 |
+| 8   | vavarier   | 50.18%        | 1                | 2024-12-12 14:33 |
+| 9   | malinakmichal   | 44.62%        | 1                | 2024-12-14 23:31 |
 
 
 
