@@ -6,7 +6,7 @@ class Config:
     # Paths
     train_path: str = "./dataset/train"
     test_path: str = "./dataset/test"
-    results_path: str = "./results"
+    results_path: str = "results"
     
     # Model parameters
     anomaly_threshold: float = 0.2
