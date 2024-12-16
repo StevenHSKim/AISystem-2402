@@ -132,45 +132,58 @@ class LocalDeformation(BaseAugmentation):
 class AnomalyAugmenter:
     def __init__(self, severity: float = 0.7):
         self.severity = severity
-        self.primary_augmentations: List[BaseAugmentation] = [
-            RandomDeletion(severity),    # 부품 누락
-            RedDotAnomaly(severity),     # 빨간 점
-            DeformationAnomaly(severity) # 찌그러짐
+        self.primary_augmentations = [
+            (RandomDeletion(severity), 0.4),
+            (RedDotAnomaly(severity), 0.3),
+            (DeformationAnomaly(severity), 0.3)
         ]
-        self.secondary_augmentations: List[BaseAugmentation] = [
-            GaussianNoise(severity * 0.5),      # 약한 노이즈
-            ColorDistortion(severity * 0.3),     # 약한 색상 변화
-            LocalDeformation(severity * 0.4)     # 추가 변형
+        self.secondary_augmentations = [
+            (GaussianNoise(severity * 0.5), 0.4),
+            (ColorDistortion(severity * 0.3), 0.3),
+            (LocalDeformation(severity * 0.4), 0.3)
         ]
     
     def generate_anomaly(self, image: Image.Image) -> Image.Image:
         """여러 augmentation을 조합하여 anomaly 생성"""
-        # Primary augmentation 선택 (1-2개)
-        num_primary = random.randint(1, 2)
-        selected_primary = random.choices(
-            self.primary_augmentations,
-            weights=[0.4, 0.3, 0.3],  # 부품 누락, 빨간 점, 찌그러짐 순서
-            k=num_primary
-        )
-        
-        # Secondary augmentation 선택 (0-1개)
-        if random.random() < 0.7:  # 70% 확률로 secondary augmentation 적용
-            selected_secondary = [random.choice(self.secondary_augmentations)]
-        else:
-            selected_secondary = []
-        
-        # Augmentation 적용
-        img = image.copy()
-        
-        # Primary augmentation 적용
-        for aug in selected_primary:
-            img = aug(img)
-        
-        # Secondary augmentation 적용
-        for aug in selected_secondary:
-            img = aug(img)
-        
-        return img
+        try:
+            img = image.copy()
+            
+            # Primary augmentation 적용 (1-2개)
+            num_primary = random.randint(1, 2)
+            selected_primary = random.choices(
+                [aug for aug, _ in self.primary_augmentations],
+                weights=[w for _, w in self.primary_augmentations],
+                k=num_primary
+            )
+            
+            # Primary augmentation 적용
+            for aug in selected_primary:
+                try:
+                    img = aug(img)
+                except Exception as e:
+                    print(f"Error in primary augmentation: {str(e)}")
+                    continue
+            
+            # Secondary augmentation 적용 (70% 확률)
+            if random.random() < 0.7:
+                aug, _ = random.choices(
+                    self.secondary_augmentations,
+                    weights=[w for _, w in self.secondary_augmentations],
+                    k=1
+                )[0]
+                try:
+                    img = aug(img)
+                except Exception as e:
+                    print(f"Error in secondary augmentation: {str(e)}")
+            
+            # mild blur 적용 (30% 확률)
+            img = self._apply_mild_blur(img)
+            
+            return img
+            
+        except Exception as e:
+            print(f"Error in generate_anomaly: {str(e)}")
+            return image  # 에러 발생 시 원본 이미지 반환
     
     def _apply_mild_blur(self, image: Image.Image) -> Image.Image:
         """약한 블러 효과 적용 (선택적)"""

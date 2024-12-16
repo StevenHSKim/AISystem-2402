@@ -236,27 +236,26 @@ class AnomalyDetector:
         score = local_std / 128.0
         return min(score, 1.0)
 
-    def _compute_anomaly_score(
-        self, 
-        image_features: torch.Tensor
-    ) -> Tuple[float, float, float]:
+    def _compute_anomaly_score(self, image_features: torch.Tensor) -> Tuple[float, float, float]:
         """
         Compute anomaly score using multiple similarity measures.
-        
-        Args:
-            image_features: Extracted image features
-            
-        Returns:
-            Tuple[float, float, float]: Anomaly score, normal similarity, and anomaly similarity
         """
         try:
             if self.class_embeddings is None or self.anomaly_embeddings is None:
                 raise ValueError("Embeddings not initialized. Call prepare() first.")
             
+            # Ensure correct feature dimensions
+            if len(image_features.shape) == 3:
+                image_features = image_features.squeeze(0)
+
+            # Normalize features
+            image_features = image_features / image_features.norm(dim=-1, keepdim=True)
+            
             # Calculate normal similarities
             normal_similarities = []
             for class_embedding in self.class_embeddings.values():
-                similarity = F.cosine_similarity(image_features, class_embedding, dim=1)
+                similarity = F.cosine_similarity(image_features.unsqueeze(0), 
+                                            class_embedding.unsqueeze(0))
                 normal_similarities.append(similarity.item())
             
             max_normal_similarity = max(normal_similarities)
@@ -264,22 +263,23 @@ class AnomalyDetector:
             # Calculate memory bank similarity
             memory_similarities = []
             for memory_features in self.memory_bank.values():
-                distances = torch.cdist(image_features, memory_features)
-                similarity = 1.0 - (distances.min().item() / 2.0)
-                memory_similarities.append(similarity)
+                similarities = F.cosine_similarity(
+                    image_features.unsqueeze(0),
+                    memory_features
+                )
+                memory_similarities.append(similarities.max().item())
             
             memory_similarity = max(memory_similarities) if memory_similarities else max_normal_similarity
             
             # Calculate anomaly similarity
             anomaly_similarities = F.cosine_similarity(
-                image_features.expand(self.anomaly_embeddings.shape[0], -1),
-                self.anomaly_embeddings,
-                dim=1
+                image_features.unsqueeze(0),
+                self.anomaly_embeddings
             )
             mean_anomaly_similarity = anomaly_similarities.mean().item()
             
             # Get specific anomaly features
-            specific_scores = self._compute_specific_anomaly_features(image_features)
+            specific_scores = self._compute_specific_anomaly_features(image_features.unsqueeze(0))
             specific_score = (
                 0.4 * specific_scores['red_score'] +
                 0.3 * specific_scores['deformation_score'] +
