@@ -133,50 +133,54 @@ class AnomalyAugmenter:
     def __init__(self, severity: float = 0.7):
         self.severity = severity
         self.primary_augmentations = [
-            (RandomDeletion(severity), 0.4),
-            (RedDotAnomaly(severity), 0.3),
-            (DeformationAnomaly(severity), 0.3)
+            RandomDeletion(severity),
+            RedDotAnomaly(severity),
+            DeformationAnomaly(severity)
         ]
+        self.primary_weights = [0.4, 0.3, 0.3]
+        
         self.secondary_augmentations = [
-            (GaussianNoise(severity * 0.5), 0.4),
-            (ColorDistortion(severity * 0.3), 0.3),
-            (LocalDeformation(severity * 0.4), 0.3)
+            GaussianNoise(severity * 0.5),
+            ColorDistortion(severity * 0.3),
+            LocalDeformation(severity * 0.4)
         ]
+        self.secondary_weights = [0.4, 0.3, 0.3]
     
     def generate_anomaly(self, image: Image.Image) -> Image.Image:
         """여러 augmentation을 조합하여 anomaly 생성"""
         try:
             img = image.copy()
             
-            # Primary augmentation 적용 (1-2개)
+            # Primary augmentation 선택 및 적용 (1-2개)
             num_primary = random.randint(1, 2)
             selected_primary = random.choices(
-                [aug for aug, _ in self.primary_augmentations],
-                weights=[w for _, w in self.primary_augmentations],
+                population=range(len(self.primary_augmentations)),
+                weights=self.primary_weights,
                 k=num_primary
             )
             
             # Primary augmentation 적용
-            for aug in selected_primary:
+            for idx in selected_primary:
                 try:
-                    img = aug(img)
+                    img = self.primary_augmentations[idx](img)
                 except Exception as e:
                     print(f"Error in primary augmentation: {str(e)}")
                     continue
             
             # Secondary augmentation 적용 (70% 확률)
             if random.random() < 0.7:
-                aug, _ = random.choices(
-                    self.secondary_augmentations,
-                    weights=[w for _, w in self.secondary_augmentations],
+                idx = random.choices(
+                    population=range(len(self.secondary_augmentations)),
+                    weights=self.secondary_weights,
                     k=1
                 )[0]
+                
                 try:
-                    img = aug(img)
+                    img = self.secondary_augmentations[idx](img)
                 except Exception as e:
                     print(f"Error in secondary augmentation: {str(e)}")
             
-            # mild blur 적용 (30% 확률)
+            # Mild blur 적용
             img = self._apply_mild_blur(img)
             
             return img

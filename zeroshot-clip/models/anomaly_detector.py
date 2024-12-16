@@ -247,15 +247,15 @@ class AnomalyDetector:
             # Ensure correct feature dimensions
             if len(image_features.shape) == 3:
                 image_features = image_features.squeeze(0)
+            if len(image_features.shape) == 1:
+                image_features = image_features.unsqueeze(0)
 
-            # Normalize features
-            image_features = image_features / image_features.norm(dim=-1, keepdim=True)
-            
             # Calculate normal similarities
             normal_similarities = []
             for class_embedding in self.class_embeddings.values():
-                similarity = F.cosine_similarity(image_features.unsqueeze(0), 
-                                            class_embedding.unsqueeze(0))
+                if len(class_embedding.shape) == 1:
+                    class_embedding = class_embedding.unsqueeze(0)
+                similarity = F.cosine_similarity(image_features, class_embedding)
                 normal_similarities.append(similarity.item())
             
             max_normal_similarity = max(normal_similarities)
@@ -263,8 +263,10 @@ class AnomalyDetector:
             # Calculate memory bank similarity
             memory_similarities = []
             for memory_features in self.memory_bank.values():
+                if len(memory_features.shape) == 1:
+                    memory_features = memory_features.unsqueeze(0)
                 similarities = F.cosine_similarity(
-                    image_features.unsqueeze(0),
+                    image_features,
                     memory_features
                 )
                 memory_similarities.append(similarities.max().item())
@@ -272,23 +274,20 @@ class AnomalyDetector:
             memory_similarity = max(memory_similarities) if memory_similarities else max_normal_similarity
             
             # Calculate anomaly similarity
+            if len(self.anomaly_embeddings.shape) == 1:
+                anomaly_embeddings = self.anomaly_embeddings.unsqueeze(0)
+            else:
+                anomaly_embeddings = self.anomaly_embeddings
+
             anomaly_similarities = F.cosine_similarity(
-                image_features.unsqueeze(0),
-                self.anomaly_embeddings
+                image_features,
+                anomaly_embeddings
             )
             mean_anomaly_similarity = anomaly_similarities.mean().item()
             
-            # Get specific anomaly features
-            specific_scores = self._compute_specific_anomaly_features(image_features.unsqueeze(0))
-            specific_score = (
-                0.4 * specific_scores['red_score'] +
-                0.3 * specific_scores['deformation_score'] +
-                0.3 * specific_scores['missing_parts_score']
-            )
-            
             # Compute final scores
             final_normal_similarity = max(max_normal_similarity, memory_similarity)
-            final_anomaly_similarity = 0.7 * mean_anomaly_similarity + 0.3 * specific_score
+            final_anomaly_similarity = mean_anomaly_similarity
             
             # Calculate final anomaly score
             anomaly_score = 1.0 - final_normal_similarity + final_anomaly_similarity
