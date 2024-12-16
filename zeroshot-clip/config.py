@@ -4,8 +4,8 @@ from dataclasses import dataclass
 @dataclass
 class Config:
     # Paths
-    train_path: str = "./train"
-    test_path: str = "./test"
+    train_path: str = "./dataset/train"
+    test_path: str = "./dataset/test"
     results_path: str = "./results"
     
     # Model parameters
