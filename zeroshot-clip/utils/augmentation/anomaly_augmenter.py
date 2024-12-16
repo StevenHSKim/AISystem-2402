@@ -11,7 +11,7 @@ class RandomDeletion(BaseAugmentation):
         img_np = np.array(image)
         height, width = img_np.shape[:2]
         
-        num_patches = np.random.randint(1, 3)  # 좀 더 적은 수의 패치
+        num_patches = np.random.randint(1, 3)
         for _ in range(num_patches):
             x = np.random.randint(0, width - width//4)
             y = np.random.randint(0, height - height//4)
@@ -37,12 +37,10 @@ class RedDotAnomaly(BaseAugmentation):
         
         num_dots = random.randint(1, 3)
         for _ in range(num_dots):
-            # 점 크기와 위치
             dot_size = random.randint(2, 6)
             x = random.randint(0, width)
             y = random.randint(0, height)
             
-            # 빨간색 점 (약간의 투명도)
             red_color = (255, 0, 0, random.randint(150, 255))
             draw.ellipse(
                 [x-dot_size, y-dot_size, x+dot_size, y+dot_size],
@@ -56,15 +54,12 @@ class DeformationAnomaly(BaseAugmentation):
         """찌그러짐 효과"""
         width, height = image.size
         
-        # 변형 지점 선택
         x_center = random.randint(width//4, 3*width//4)
         y_center = random.randint(height//4, 3*height//4)
         
-        # 격자 생성
         grid_size = 20
         displacement = int(min(width, height) * 0.15)
         
-        # 변형 매트릭스 생성
         coords = []
         for y in range(0, height, grid_size):
             for x in range(0, width, grid_size):
@@ -81,7 +76,6 @@ class DeformationAnomaly(BaseAugmentation):
                     
                 coords.extend([x, y, new_x, new_y])
         
-        # 변형 적용
         img = image.transform(
             (width, height),
             Image.MESH,
@@ -91,38 +85,95 @@ class DeformationAnomaly(BaseAugmentation):
         
         return img
 
+class GaussianNoise(BaseAugmentation):
+    def __call__(self, image: Image.Image) -> Image.Image:
+        """가우시안 노이즈 추가"""
+        img_np = np.array(image).astype(np.float32)
+        noise = np.random.normal(0, self.severity * 25, img_np.shape)  # 감소된 노이즈 강도
+        noisy_img = np.clip(img_np + noise, 0, 255).astype(np.uint8)
+        return Image.fromarray(noisy_img)
+
+class ColorDistortion(BaseAugmentation):
+    def __call__(self, image: Image.Image) -> Image.Image:
+        """색상 왜곡"""
+        img = image
+        
+        # 감소된 강도로 색상 변경
+        if random.random() < 0.5:
+            saturation = ImageEnhance.Color(img)
+            img = saturation.enhance(1.0 + (self.severity - 0.5) * 0.5)
+        
+        if random.random() < 0.5:
+            brightness = ImageEnhance.Brightness(img)
+            img = brightness.enhance(1.0 + (self.severity - 0.5) * 0.3)
+        
+        if random.random() < 0.5:
+            contrast = ImageEnhance.Contrast(img)
+            img = contrast.enhance(1.0 + (self.severity - 0.5) * 0.3)
+        
+        return img
+
+class LocalDeformation(BaseAugmentation):
+    def __call__(self, image: Image.Image) -> Image.Image:
+        """부분적 변형"""
+        width, height = image.size
+        x1 = np.random.randint(0, width // 2)
+        y1 = np.random.randint(0, height // 2)
+        x2 = x1 + width // 4
+        y2 = y1 + height // 4
+        
+        img_np = np.array(image)
+        region = img_np[y1:y2, x1:x2]
+        distorted = np.roll(region, shift=int(self.severity * 10))  # 감소된 변형 강도
+        img_np[y1:y2, x1:x2] = distorted
+        
+        return Image.fromarray(img_np)
+
 class AnomalyAugmenter:
     def __init__(self, severity: float = 0.7):
         self.severity = severity
-        self.augmentations: List[BaseAugmentation] = [
+        self.primary_augmentations: List[BaseAugmentation] = [
             RandomDeletion(severity),    # 부품 누락
             RedDotAnomaly(severity),     # 빨간 점
             DeformationAnomaly(severity) # 찌그러짐
         ]
+        self.secondary_augmentations: List[BaseAugmentation] = [
+            GaussianNoise(severity * 0.5),      # 약한 노이즈
+            ColorDistortion(severity * 0.3),     # 약한 색상 변화
+            LocalDeformation(severity * 0.4)     # 추가 변형
+        ]
     
     def generate_anomaly(self, image: Image.Image) -> Image.Image:
-        # 각 augmentation 유형별 가중치 설정
-        weights = [0.4, 0.3, 0.3]  # 부품 누락, 빨간 점, 찌그러짐 순
-        
-        # 1-2개의 augmentation 랜덤 선택
-        num_augs = random.randint(1, 2)
-        selected_augs = random.choices(
-            self.augmentations,
-            weights=weights,
-            k=num_augs
+        """여러 augmentation을 조합하여 anomaly 생성"""
+        # Primary augmentation 선택 (1-2개)
+        num_primary = random.randint(1, 2)
+        selected_primary = random.choices(
+            self.primary_augmentations,
+            weights=[0.4, 0.3, 0.3],  # 부품 누락, 빨간 점, 찌그러짐 순서
+            k=num_primary
         )
         
-        img = image
-        for aug in selected_augs:
+        # Secondary augmentation 선택 (0-1개)
+        if random.random() < 0.7:  # 70% 확률로 secondary augmentation 적용
+            selected_secondary = [random.choice(self.secondary_augmentations)]
+        else:
+            selected_secondary = []
+        
+        # Augmentation 적용
+        img = image.copy()
+        
+        # Primary augmentation 적용
+        for aug in selected_primary:
             img = aug(img)
-            
+        
+        # Secondary augmentation 적용
+        for aug in selected_secondary:
+            img = aug(img)
+        
         return img
-
-    def _apply_mild_noise(self, image: Image.Image) -> Image.Image:
-        """약간의 노이즈 추가 (선택적)"""
+    
+    def _apply_mild_blur(self, image: Image.Image) -> Image.Image:
+        """약한 블러 효과 적용 (선택적)"""
         if random.random() < 0.3:  # 30% 확률로 적용
-            img_np = np.array(image)
-            noise = np.random.normal(0, 10, img_np.shape)  # 약한 노이즈
-            img_np = np.clip(img_np + noise, 0, 255).astype(np.uint8)
-            return Image.fromarray(img_np)
+            return image.filter(ImageFilter.GaussianBlur(radius=random.uniform(0.5, 1.0)))
         return image
