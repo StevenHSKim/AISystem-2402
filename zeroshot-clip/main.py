@@ -26,7 +26,13 @@ def setup_environment(config: Config) -> Tuple[str, str, str]:
     Returns:
         Tuple[str, str, str]: Device, train path, and test path
     """
-    device = "cuda" if torch.cuda.is_available() else "cpu"
+    if torch.backends.mps.is_available():
+        device = "mps"
+    elif torch.cuda.is_available():
+        device = "cuda"
+    else:
+        device = "cpu"
+    # device = "cuda" if torch.cuda.is_available() else "cpu"
     print(f"Using device: {device}")
     
     train_path = config.train_path
