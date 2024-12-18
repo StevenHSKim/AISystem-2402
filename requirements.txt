@@ -5,3 +5,5 @@ matplotlib
 tqdm
 dataclasses
 openai-clip
+opnecv-python
+scikit-learn
