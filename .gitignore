@@ -1,5 +1,10 @@
+# macOS system files
+.DS_Store
+
 # dataset files
 dataset/
+train/
+test/
 results/
 
 # Byte-compiled / optimized / DLL files

@@ -75,7 +75,7 @@ def load_image(image_path: str, preprocess: callable, device: str) -> torch.Tens
     """
     try:
         image = Image.open(image_path).convert('RGB')
-        image_input = preprocess(image).unsqueeze(0).to(device)
+        image_input = preprocess(image).unsqueeze(0).to(device).float()
         return image_input
         
     except Exception as e:

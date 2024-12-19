@@ -17,150 +17,95 @@ random.seed(42)
 
 class ContrastiveMemoryBank:
     def __init__(self, feature_dim: int, device: str, memory_size: int = 300):
-        """
-        향상된 Contrastive Memory Bank 초기화
-        
-        Args:
-            feature_dim: 특징 벡터의 차원
-            device: 사용할 디바이스 (cuda/cpu/mps)
-            memory_size: 메모리 뱅크의 크기
-        """
         self.memory_size = memory_size
-        self.temperature = 0.07  # temperature 미세 조정
+        self.temperature = 0.07
         self.features = None
         self.ptr = 0
         self.device = device
         self.feature_dim = feature_dim
-        
-        # 통계 추적을 위한 변수들
         self.mean = None
         self.std = None
         self.running_max = None
-        
+
     def update(self, features: torch.Tensor):
-        """
-        메모리 뱅크 업데이트
-        
-        Args:
-            features: 새로운 특징 벡터들 (batch_size x feature_dim)
-        """
         batch_size = features.size(0)
-        
-        # 초기 메모리 설정
+
         if self.features is None:
             torch.manual_seed(42)
-            self.features = torch.randn(self.memory_size, features.size(1)).to(self.device)
+            self.features = torch.randn(self.memory_size, features.size(1)).to(self.device).float()
             self.features = self._normalize_features(self.features)
-            
-            # 통계 초기화
             self.mean = torch.mean(self.features, dim=0)
             self.std = torch.std(self.features, dim=0)
             self.running_max = torch.max(torch.abs(self.features))
-        
-        # 포인터 순환
+
         if self.ptr + batch_size >= self.memory_size:
             self.ptr = 0
-        
-        # 특징 정규화
+
         normalized_features = self._normalize_features(features.to(self.device))
-        
-        # 메모리 업데이트
         self.features[self.ptr:self.ptr + batch_size] = normalized_features
-        
-        # 통계 업데이트
         self._update_statistics()
-        
-        # 포인터 업데이트
         self.ptr = (self.ptr + batch_size) % self.memory_size
-        
+
     def get_similarity(self, query: torch.Tensor) -> torch.Tensor:
         if self.features is None:
             return torch.zeros(query.size(0)).to(self.device)
-        
-        # 쿼리 정규화
+
         query = self._normalize_features(query.to(self.device))
-        
-        # 유사도 계산
         sim = self._compute_similarity(query)
-        
-        # Top-k 유사도 평균
-        k = min(5, self.features.size(0))  # k 증가
+        k = min(5, self.features.size(0))
         top_k_sim = torch.topk(sim, k=k, dim=1)[0]
-        
-        # 이상치 제거를 위한 weighted mean
         weights = torch.softmax(-torch.arange(k).float() / 2, dim=0).to(self.device)
         weighted_mean = (top_k_sim * weights.unsqueeze(0)).sum(dim=1)
-        
         return weighted_mean / self.temperature
-    
+
     def _normalize_features(self, features: torch.Tensor) -> torch.Tensor:
-        """
-        특징 벡터 정규화
-        """
-        # L2 정규화
-        features = F.normalize(features, dim=1, p=2)
-        
-        # 추가 정규화
+        features = F.normalize(features, dim=1, p=2).float()
         if self.running_max is not None:
             features = features / self.running_max
-            
         return features
-    
+
     def _compute_similarity(self, query: torch.Tensor) -> torch.Tensor:
-        """
-        개선된 유사도 계산
-        """
-        # 코사인 유사도
         cos_sim = F.cosine_similarity(
             query.unsqueeze(1),
             self.features.unsqueeze(0),
             dim=2
         )
-        
-        # L2 거리
         l2_dist = torch.cdist(query, self.features)
         l2_sim = 1 / (1 + l2_dist)
-        
-        # 결합된 유사도
         combined_sim = (cos_sim + l2_sim) / 2
-        
         return combined_sim
-    
+
     def _update_statistics(self):
-        """
-        메모리 뱅크 통계 업데이트
-        """
         with torch.no_grad():
-            # 이동 평균 업데이트
             current_mean = torch.mean(self.features, dim=0)
             current_std = torch.std(self.features, dim=0)
             current_max = torch.max(torch.abs(self.features))
-            
             momentum = 0.9
             self.mean = momentum * self.mean + (1 - momentum) * current_mean
             self.std = momentum * self.std + (1 - momentum) * current_std
             self.running_max = max(self.running_max * momentum, current_max)
   
+
 class AnomalyDetector:
     def __init__(self, model):
         self.model = model
-        self.class_thresholds = {}  # 클래스별 threshold를 저장할 딕셔너리
+        self.class_thresholds = {}
         self.class_embeddings = None
         self.anomaly_embeddings = None
         self.memory_bank = None
-        
+
     def prepare(self, normal_samples: Dict[str, List[str]]) -> None:
         print("Computing class embeddings...")
         self.class_embeddings = self._compute_class_embeddings(normal_samples)
-        
+
         print("Generating anomaly embeddings...")
         self.anomaly_embeddings = self._generate_anomaly_embeddings(normal_samples)
-        
+
         print("Initializing memory bank...")
         feature_dim = next(iter(self.class_embeddings.values())).shape[-1]
         self.memory_bank = ContrastiveMemoryBank(feature_dim=feature_dim, device=self.model.device)
         self._initialize_memory_bank(normal_samples)
-        
+
         print("Finding optimal thresholds per class...")
         validation_scores = self._generate_validation_scores_per_class(normal_samples)
         self.class_thresholds = self._find_optimal_thresholds_per_class(validation_scores)
@@ -169,26 +114,27 @@ class AnomalyDetector:
 
     def predict(self, image: torch.Tensor) -> Dict:
         try:
+            image = image.to(self.model.device).float()
+            if self.model.model.dtype == torch.float16:
+                image = image.half()
+
             features = self.model.extract_features(image)
-            
+
             if features is None:
                 raise ValueError("Failed to extract features from image")
-            
-            # 모든 클래스와의 유사도 계산
+
             class_similarities = {}
             for class_name, class_embedding in self.class_embeddings.items():
-                class_embedding = F.normalize(class_embedding.to(self.model.device), dim=-1)
+                class_embedding = F.normalize(class_embedding.to(self.model.device), dim=-1).float()
                 similarity = F.cosine_similarity(features, class_embedding.unsqueeze(0))
                 class_similarities[class_name] = similarity.item()
-            
-            # 가장 유사한 클래스 선택
+
             most_similar_class = max(class_similarities.items(), key=lambda x: x[1])[0]
             threshold = self.class_thresholds[most_similar_class]
-            
-            # 해당 클래스의 threshold로 점수 계산
+
             score, normal_sim, anomaly_sim = self._compute_anomaly_score(features)
             is_anomaly = score > threshold
-            
+
             return {
                 'predicted_label': 'anomaly' if is_anomaly else 'normal',
                 'anomaly_score': float(score),
@@ -198,7 +144,7 @@ class AnomalyDetector:
                 'threshold': float(threshold),
                 'most_similar_class': most_similar_class
             }
-            
+
         except Exception as e:
             print(f"Error in prediction: {str(e)}")
             return {
@@ -210,76 +156,52 @@ class AnomalyDetector:
                 'threshold': 0.5,
                 'most_similar_class': None
             }
-            
+
     def _compute_class_embeddings(self, samples_dict: Dict[str, List[str]]) -> Dict[str, torch.Tensor]:
         class_embeddings = {}
-        
         for class_name, image_paths in tqdm(samples_dict.items(), desc="Computing class embeddings"):
             embeddings = []
-            # 각 이미지에 대한 여러 각도의 feature 추출
             for img_path in image_paths:
                 try:
                     image = Image.open(img_path).convert('RGB')
-                    # 원본 이미지의 feature
-                    image_input = self.model.preprocess(image).unsqueeze(0).to(self.model.device)
+                    image_input = self.model.preprocess(image).unsqueeze(0).to(self.model.device).float()
+                    if self.model.model.dtype == torch.float16:
+                        image_input = image_input.half()
+
                     features = self.model.extract_features(image_input)
                     embeddings.append(features)
-                    
-                    # 약간의 회전과 크기 변경을 통한 추가 feature
-                    for angle in [-10, 10]:  # 회전 각도
-                        rotated = image.rotate(angle, Image.BILINEAR)
-                        input_tensor = self.model.preprocess(rotated).unsqueeze(0).to(self.model.device)
-                        rot_features = self.model.extract_features(input_tensor)
-                        embeddings.append(rot_features)
-                    
+
                 except Exception as e:
                     print(f"Error processing {img_path}: {str(e)}")
                     continue
-            
+
             if embeddings:
                 stacked_embeddings = torch.cat(embeddings, dim=0)
-                
-                # Outlier 제거
-                mean_embedding = torch.mean(stacked_embeddings, dim=0)
-                distances = torch.norm(stacked_embeddings - mean_embedding, dim=1)
-                threshold = torch.mean(distances) + torch.std(distances)
-                mask = distances < threshold
-                filtered_embeddings = stacked_embeddings[mask]
-                
-                # 최종 class embedding 계산
-                class_embedding = torch.mean(filtered_embeddings, dim=0)
+                class_embedding = torch.mean(stacked_embeddings, dim=0)
                 class_embeddings[class_name] = F.normalize(class_embedding, dim=-1)
-        
+
         return class_embeddings
-    
+
     def _initialize_memory_bank(self, samples_dict: Dict[str, List[str]]) -> None:
         class_features = []
-        
         for class_name, image_paths in samples_dict.items():
             for img_path in image_paths:
                 try:
                     image = Image.open(img_path).convert('RGB')
-                    image_input = self.model.preprocess(image).unsqueeze(0).to(self.model.device)
+                    image_input = self.model.preprocess(image).unsqueeze(0).to(self.model.device).float()
+                    if self.model.model.dtype == torch.float16:
+                        image_input = image_input.half()
+
                     features = self.model.extract_features(image_input)
                     class_features.append(features)
-                    
-                    # 더 다양한 normal augmentation 적용
-                    for _ in range(3):  # augmentation 횟수 증가
-                        aug_image = self._apply_normal_augmentation(image)
-                        aug_input = self.model.preprocess(aug_image).unsqueeze(0).to(self.model.device)
-                        aug_features = self.model.extract_features(aug_input)
-                        class_features.append(aug_features)
-                        
+
                 except Exception as e:
                     print(f"Error in memory bank initialization: {str(e)}")
                     continue
-        
+
         if class_features:
             stacked_features = torch.cat(class_features, dim=0)
-            # Feature clustering을 통한 대표 샘플 선택
-            n_clusters = min(len(stacked_features), self.memory_bank.memory_size)
-            indices = torch.randperm(len(stacked_features))[:n_clusters]
-            selected_features = stacked_features[indices]
+            selected_features = stacked_features[:self.memory_bank.memory_size]
             self.memory_bank.update(F.normalize(selected_features, dim=-1))
 
     def _apply_normal_augmentation(self, image: Image.Image) -> Image.Image:
@@ -365,7 +287,7 @@ class AnomalyDetector:
                             )
                             
                             if len(batch_images) >= batch_size:
-                                batch = torch.stack(batch_images).to(self.model.device)
+                                batch = torch.stack(batch_images).to(self.model.device).float()
                                 features = self.model.extract_features(batch)
                                 anomaly_embeddings.append(features)
                                 batch_images = []
@@ -378,7 +300,7 @@ class AnomalyDetector:
         
         # 남은 배치 처리
         if batch_images:
-            batch = torch.stack(batch_images).to(self.model.device)
+            batch = torch.stack(batch_images).to(self.model.device).float()
             features = self.model.extract_features(batch)
             anomaly_embeddings.append(features)
         
@@ -464,7 +386,7 @@ class AnomalyDetector:
         
         # 각 클래스 프로토타입과의 유사도 계산
         for class_name, class_embedding in self.class_embeddings.items():
-            class_embedding = F.normalize(class_embedding.to(device), dim=-1)
+            class_embedding = F.normalize(class_embedding.to(device), dim=-1).float()
             similarity = F.cosine_similarity(image_features, class_embedding.unsqueeze(0))
             class_similarities.append(similarity.item())
         
@@ -486,24 +408,21 @@ class AnomalyDetector:
     def _compute_anomaly_score(self, image_features: torch.Tensor) -> Tuple[float, float, float]:
         try:
             device = self.model.device
-            image_features = F.normalize(image_features, dim=-1)
-            
-            # 1. 기본 유사도 계산
+            image_features = F.normalize(image_features, dim=-1).float()
+
             normal_similarity = self._compute_normal_similarity(image_features)
             anomaly_similarity = self._compute_anomaly_similarity(image_features)
-            
-            # 2. Memory Bank의 Outlier Score 계산
+
             memory_score = self._compute_memory_outlier_score(image_features)
-            
-            # 3. 종합 스코어 계산
+
             final_score = self._compute_final_score(
                 normal_similarity,
                 anomaly_similarity,
                 memory_score,
             )
-            
+
             return final_score, normal_similarity, anomaly_similarity
-            
+
         except Exception as e:
             print(f"Error in compute_anomaly_score: {str(e)}")
             return None, None, None
@@ -527,7 +446,7 @@ class AnomalyDetector:
                     image = Image.open(sample_path).convert('RGB')
                     
                     # 1. 원본 이미지 점수
-                    image_input = self.model.preprocess(image).unsqueeze(0).to(self.model.device)
+                    image_input = self.model.preprocess(image).unsqueeze(0).to(self.model.device).float()
                     features = self.model.extract_features(image_input)
                     score, _, _ = self._compute_anomaly_score(features)
                     if score is not None:
@@ -536,7 +455,7 @@ class AnomalyDetector:
                     # 2. 정상 augmentation (약한 변형)
                     for _ in range(n_normal_augs):
                         normal_aug = self._apply_normal_augmentation(image)
-                        aug_input = self.model.preprocess(normal_aug).unsqueeze(0).to(self.model.device)
+                        aug_input = self.model.preprocess(normal_aug).unsqueeze(0).to(self.model.device).float()
                         aug_features = self.model.extract_features(aug_input)
                         aug_score, _, _ = self._compute_anomaly_score(aug_features)
                         if aug_score is not None:
@@ -546,7 +465,7 @@ class AnomalyDetector:
                     for _ in range(n_anomaly_augs):
                         anomaly_image = augmenter.generate_anomaly(image)
                         if anomaly_image is not None:
-                            anomaly_input = self.model.preprocess(anomaly_image).unsqueeze(0).to(self.model.device)
+                            anomaly_input = self.model.preprocess(anomaly_image).unsqueeze(0).to(self.model.device).float()
                             anomaly_features = self.model.extract_features(anomaly_input)
                             anomaly_score, _, _ = self._compute_anomaly_score(anomaly_features)
                             if anomaly_score is not None:

@@ -1,0 +1,10 @@
+torch
+torchvision
+Pillow
+matplotlib
+tqdm
+dataclasses
+openai-clip
+opencv-python
+numpy
+scikit-learn

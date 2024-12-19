@@ -4,9 +4,12 @@ from dataclasses import dataclass
 @dataclass
 class Config:
     # Paths
-    train_path: str = "./dataset/train"
-    test_path: str = "./dataset/test"
-    results_path: str = "zeroshot-clip/results"
+    train_path: str = "./train"
+    test_path: str = "./test"
+    results_path: str = "./results"
+    # train_path: str = "/Users/kimhaeseong/AISystem-2402/zeroshot-clip/train"
+    # test_path: str = "/Users/kimhaeseong/AISystem-2402/zeroshot-clip/test"
+    # results_path: str = "/Users/kimhaeseong/AISystem-2402/zeroshot-clip/results"
     
     # Model parameters
     anomaly_threshold: float = 0.2
