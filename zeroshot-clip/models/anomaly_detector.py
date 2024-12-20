@@ -5,7 +5,7 @@ from tqdm import tqdm
 from utils.augmentation.anomaly_augmenter import AnomalyAugmenter
 
 class AnomalyDetector:
-    def __init__(self, model, threshold: float = 0.5):
+    def __init__(self, model, threshold: float = 0.3):
         """
         Initialize anomaly detector.
         
