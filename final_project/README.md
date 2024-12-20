@@ -227,9 +227,9 @@ Ensure your submissions are finalized by **23:59 KST** to be included in the nex
 | 12   | IvanDelafuys  | 50.88%      | 1                | 2024-12-16 02:10  |
 | 13   | dhn06038   |  50.50%        | 1                | 2024-12-20 01:11 |
 | 13   | StevenHSKim   |  50.50%        | 4                | 2024-12-20 10:30 |
-| 14    | **Baseline Model 1**  | **50.65%**      | 1                | - |
-| 15   | vavarier   | 50.18%        | 1                | 2024-12-12 14:33 |
-| 16   | Artyste8038-fr   | 49.85%        | 1                | 2024-12-17 19:15 |
+| 15    | **Baseline Model 1**  | **50.65%**      | 1                | - |
+| 16   | vavarier   | 50.18%        | 1                | 2024-12-12 14:33 |
+| 17   | Artyste8038-fr   | 49.85%        | 1                | 2024-12-17 19:15 |
 
 
 
