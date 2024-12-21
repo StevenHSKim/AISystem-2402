@@ -225,9 +225,9 @@ Ensure your submissions are finalized by **23:59 KST** to be included in the nex
 | 10   | malinakmichal   |  51.88%        | 3                | 2024-12-19 23:51 |
 | 11    | hyeonseo6101  | 51.45%      | 2                | 2024-12-19 18:37  |
 | 12   | IvanDelafuys  | 50.88%      | 1                | 2024-12-16 02:10  |
-| 13   | dhn06038   |  50.50%        | 1                | 2024-12-20 01:11 |
-| 13   | StevenHSKim   |  50.50%        | 4                | 2024-12-20 10:30 |
-| 15    | **Baseline Model 1**  | **50.65%**      | 1                | - |
+| 13   | StevenHSKim   |  50.80%        | 4                | 2024-12-20 10:35 |
+| 14    | **Baseline Model 1**  | **50.65%**      | 1                | - |
+ 15   | dhn06038   |  50.50%        | 1                | 2024-12-20 01:11 |
 | 16   | vavarier   | 50.18%        | 1                | 2024-12-12 14:33 |
 | 17   | Artyste8038-fr   | 49.85%        | 1                | 2024-12-17 19:15 |
 
